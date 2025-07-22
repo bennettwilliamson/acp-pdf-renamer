@@ -1,3 +1,5 @@
+
+
 function extractStatementEndDate(text: string): string | null {
   // Look for "Statement Period" followed by date range
   const pattern = /Statement Period\s+(\d{2}\/\d{2}\/\d{4})\s*[-–—]\s*(\d{2}\/\d{2}\/\d{4})/i
@@ -33,13 +35,15 @@ export async function POST(request: Request) {
     
     // Convert file to buffer
     const arrayBuffer = await file.arrayBuffer()
-    const uint8Array = new Uint8Array(arrayBuffer)
+    // @ts-ignore
+    const { Buffer } = await import('buffer')
+    const buffer = Buffer.from(arrayBuffer)
     
     // Extract text from PDF using dynamic import
     let pdfData: any
     try {
       const pdf = (await import('pdf-parse')).default
-      pdfData = await pdf(uint8Array)
+      pdfData = await pdf(buffer)
     } catch (error) {
       console.error('PDF parsing error:', error)
       return Response.json({
@@ -62,7 +66,7 @@ export async function POST(request: Request) {
     const newFilename = `Membership Statement - ${extractedDate}.pdf`
     
     // Create download URL (base64 encoded)
-    const base64Data = btoa(String.fromCharCode(...uint8Array))
+    const base64Data = buffer.toString('base64')
     const downloadUrl = `data:application/pdf;base64,${base64Data}`
     
     return Response.json({
