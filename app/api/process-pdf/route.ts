@@ -1,14 +1,3 @@
-import { NextRequest, NextResponse } from 'next/server'
-import pdf from 'pdf-parse'
-
-interface ProcessResult {
-  success: boolean
-  message: string
-  filename?: string
-  extractedDate?: string
-  downloadUrl?: string
-}
-
 function extractStatementEndDate(text: string): string | null {
   // Look for "Statement Period" followed by date range
   const pattern = /Statement Period\s+(\d{2}\/\d{2}\/\d{4})\s*[-–—]\s*(\d{2}\/\d{2}\/\d{4})/i
@@ -23,26 +12,20 @@ function extractStatementEndDate(text: string): string | null {
   return null
 }
 
-function generateUniqueFilename(baseName: string, extension: string): string {
-  // For now, just return the base name
-  // In a real app, you'd check against existing files and add suffixes like -1, -2, etc.
-  return `${baseName}${extension}`
-}
-
-export async function POST(request: NextRequest) {
+export async function POST(request: Request) {
   try {
     const formData = await request.formData()
     const file = formData.get('pdf') as File
     
     if (!file) {
-      return NextResponse.json<ProcessResult>({
+      return Response.json({
         success: false,
         message: 'No PDF file provided'
       })
     }
     
     if (file.type !== 'application/pdf') {
-      return NextResponse.json<ProcessResult>({
+      return Response.json({
         success: false,
         message: 'File must be a PDF'
       })
@@ -50,14 +33,16 @@ export async function POST(request: NextRequest) {
     
     // Convert file to buffer
     const arrayBuffer = await file.arrayBuffer()
-    const buffer = Buffer.from(arrayBuffer)
+    const uint8Array = new Uint8Array(arrayBuffer)
     
-    // Extract text from PDF
-    let pdfData
+    // Extract text from PDF using dynamic import
+    let pdfData: any
     try {
-      pdfData = await pdf(buffer)
+      const pdf = (await import('pdf-parse')).default
+      pdfData = await pdf(uint8Array)
     } catch (error) {
-      return NextResponse.json<ProcessResult>({
+      console.error('PDF parsing error:', error)
+      return Response.json({
         success: false,
         message: 'Failed to read PDF content. Please ensure the file is a valid PDF.'
       })
@@ -67,23 +52,20 @@ export async function POST(request: NextRequest) {
     const extractedDate = extractStatementEndDate(pdfData.text)
     
     if (!extractedDate) {
-      return NextResponse.json<ProcessResult>({
+      return Response.json({
         success: false,
         message: 'Could not find "Statement Period" with valid date range in the PDF. Please ensure the PDF contains a statement period in the format "MM/DD/YYYY - MM/DD/YYYY".'
       })
     }
     
     // Generate new filename
-    const newFilename = generateUniqueFilename(
-      `Membership Statement - ${extractedDate}`,
-      '.pdf'
-    )
+    const newFilename = `Membership Statement - ${extractedDate}.pdf`
     
     // Create download URL (base64 encoded)
-    const base64Data = buffer.toString('base64')
+    const base64Data = btoa(String.fromCharCode(...uint8Array))
     const downloadUrl = `data:application/pdf;base64,${base64Data}`
     
-    return NextResponse.json<ProcessResult>({
+    return Response.json({
       success: true,
       message: 'PDF processed successfully!',
       filename: newFilename,
@@ -93,7 +75,7 @@ export async function POST(request: NextRequest) {
     
   } catch (error) {
     console.error('Error processing PDF:', error)
-    return NextResponse.json<ProcessResult>({
+    return Response.json({
       success: false,
       message: 'An unexpected error occurred while processing the PDF.'
     })
